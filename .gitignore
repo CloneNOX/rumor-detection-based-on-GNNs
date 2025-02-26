@@ -174,3 +174,7 @@ rumor_detection_acl2017/
 */codetest.ipynb
 */plot.ipynb
 */result.ipynb
+
+# Twitter dataset
+twitter15/
+twitter16/
