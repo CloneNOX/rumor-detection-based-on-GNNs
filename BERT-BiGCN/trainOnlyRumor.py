@@ -5,9 +5,8 @@ from torch.utils.data import DataLoader, random_split
 import argparse
 import numpy as np
 from BertBiGCN import BertBiGCNOnlyRumor
-from transformers import BertTokenizer, BertModel
 from rumorDataset import RumorDataset
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report
 from tqdm import tqdm
 from copy import copy
 from time import process_time, time
@@ -30,8 +29,8 @@ parser.add_argument('--dropout', type=float, default=0.1,\
 # dataset parameters
 parser.add_argument('--data_path', type=str, default='../datasets/PHEME/',\
                     help='path to training dataset, default: ../datasets/PHEME/')
-parser.add_argument('--dataset_random_seed', type=int, default=925,\
-                    help='random seed for dataset split, fix dataset partition for each train, default: 925')
+parser.add_argument('--dataset_random_seed', default=None,\
+                    help='random seed for dataset split, fix dataset partition for each train, default: None')
 # train parameters
 parser.add_argument('--optimizer', type=str, default='AdamW',\
                     help='set optimizer type in [SGD/Adam/AdamW...], default: AdamW')
@@ -39,8 +38,8 @@ parser.add_argument('--lr', type=float, default=1e-5,\
                     help='set learning rate, default: 1e-5')
 parser.add_argument('--weightDecay', type=float, default=5e-4,\
                     help='set weight decay for L2 Regularization, default: 5e-4')
-parser.add_argument('--epoch', type=int, default=20,\
-                    help='epoch to train, default: 20')
+parser.add_argument('--epoch', type=int, default=40,\
+                    help='epoch to train, default: 40')
 parser.add_argument('--patience', type=int, default=5,\
                     help='epoch to stop training, default: 5')
 parser.add_argument('--device', type=str, default='cuda',\
@@ -62,20 +61,27 @@ def main():
     
     # 获取数据集及词嵌入
     print('preparing data...', end='', flush=True)
-    tokenizer = BertTokenizer.from_pretrained(args.bert_path)
+    if 'bert-' in args.bert_path:
+        from transformers import BertTokenizer
+        tokenizer = BertTokenizer.from_pretrained(args.bert_path)
+    elif 'roberta-' in args.bert_path:
+        from transformers import RobertaTokenizer
+        tokenizer = RobertaTokenizer.from_pretrained(args.bert_path)
+    else:
+        logging.ERROR('Unknown bert model path')
+        exit()
 
-    torch.manual_seed(args.dataset_random_seed)
+    if args.dataset_random_seed is not None:
+        torch.manual_seed(args.dataset_random_seed)
     if 'PHEME' in args.data_path:
-        dataset = RumorDataset(args.data_path, 'all', tokenizer=tokenizer)
-        train_size = dataset.__len__() // 10 * 8
-        dev_size = dataset.__len__() // 10 * 9 - train_size
-        test_size = dataset.__len__() - train_size - dev_size
-        train_set, dev_set, test_set = random_split(dataset, [train_size, dev_size, test_size])
+        train_set = RumorDataset(args.data_path, 'train', tokenizer=tokenizer)
+        dev_set = RumorDataset(args.data_path, 'dev', tokenizer=tokenizer)
+        test_set = RumorDataset(args.data_path, 'test', tokenizer=tokenizer)
 
         train_loader = DataLoader(train_set, shuffle=True, collate_fn=RumorDataset.collate_fn)
         dev_loader = DataLoader(dev_set, shuffle=True, collate_fn=RumorDataset.collate_fn)
         test_loader = DataLoader(test_set, shuffle=True, collate_fn=RumorDataset.collate_fn)
-        category = dataset.category
+        category = train_set.category
     else:
         dataset = RumorDataset(args.data_path, 'traindev', tokenizer=tokenizer)
         train_size = dataset.__len__() // 10 * 8
@@ -104,7 +110,15 @@ def main():
     logging.info(trainInfo)
     
     # 声明模型、损失函数、优化器
-    bert_model = BertModel.from_pretrained(args.bert_path)
+    if 'bert-' in args.bert_path:
+        from transformers import BertModel
+        bert_model = BertModel.from_pretrained(args.bert_path)
+    elif 'roberta-' in args.bert_path:
+        from transformers import RobertaTokenizer, RobertaModel
+        bert_model = RobertaModel.from_pretrained(args.bert_path)
+    else:
+        logging.ERROR('Unknown bert model path')
+        exit()
 
     model = BertBiGCNOnlyRumor(
         bert_model = bert_model,
@@ -327,6 +341,16 @@ def main():
         precision,
         recall
     ))
+    logging.info('classification report:')
+    logging.info('\n' + str(classification_report(
+            rumorTruth, 
+            rumorPredict, 
+            labels=range(len(category)), 
+            target_names=[item[0] for item in sorted(category.items(), key=lambda x:x[1])],
+            digits=4
+        ))
+    )
+
 # end main()
 
 if __name__ == '__main__':

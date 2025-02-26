@@ -35,8 +35,8 @@ parser.add_argument('--need_stance', type=int, default='1',\
 # dataset parameters
 parser.add_argument('--data_path', type=str, default='../datasets/semeval2017-task8/',\
                     help='path to training dataset, default: ../datasets/semeval2017-task8/')
-parser.add_argument('--dataset_random_seed', type=int, default=925,\
-                    help='random seed for dataset split, fix dataset partition for each train, default: 925')
+parser.add_argument('--dataset_random_seed', default=None,\
+                    help='random seed for dataset split, fix dataset partition for each train, default: None')
 # train parameters
 parser.add_argument('--optimizer', type=str, default='AdamW',\
                     help='set optimizer type in [SGD/Adam/AdamW...], default: AdamW')
@@ -71,19 +71,17 @@ def main():
     print('preparing data...', end='', flush=True)
     tokenizer = BertTokenizer.from_pretrained(args.bert_path)
 
-    torch.manual_seed(args.dataset_random_seed)
+    if args.dataset_random_seed is not None:
+        torch.manual_seed(args.dataset_random_seed)
     if 'PHEME' in args.data_path:
-        dataset = RumorStanceDataset(args.data_path, 'all', tokenizer=tokenizer)
-        train_size = dataset.__len__() // 10 * 8
-        dev_size = dataset.__len__() // 10 * 9 - train_size
-        test_size = dataset.__len__() - train_size - dev_size
-        train_set, dev_set, test_set = random_split(dataset, [train_size, dev_size, test_size])
+        train_set = RumorStanceDataset(args.data_path, 'train', tokenizer=tokenizer)
+        dev_set = RumorStanceDataset(args.data_path, 'dev', tokenizer=tokenizer)
+        test_set = RumorStanceDataset(args.data_path, 'test', tokenizer=tokenizer)
 
         train_loader = DataLoader(train_set, shuffle=True, collate_fn=RumorStanceDataset.collate_fn)
         dev_loader = DataLoader(dev_set, shuffle=True, collate_fn=RumorStanceDataset.collate_fn)
         test_loader = DataLoader(test_set, shuffle=True, collate_fn=RumorStanceDataset.collate_fn)
-        rumor_category = dataset.rumor_category
-        stance_category = dataset.stance_category
+        category = dataset.category
     else:
         dataset = RumorStanceDataset(args.data_path, 'traindev', tokenizer=tokenizer)
         train_size = dataset.__len__() // 10 * 8
